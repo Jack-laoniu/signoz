@@ -36,6 +36,7 @@ import (
 	tracesV3 "go.signoz.io/signoz/pkg/query-service/app/traces/v3"
 	"go.signoz.io/signoz/pkg/query-service/auth"
 	"go.signoz.io/signoz/pkg/query-service/cache"
+	"go.signoz.io/signoz/pkg/query-service/clientAgentConf"
 	"go.signoz.io/signoz/pkg/query-service/constants"
 	v3 "go.signoz.io/signoz/pkg/query-service/model/v3"
 
@@ -43,11 +44,13 @@ import (
 	"go.uber.org/zap"
 
 	"go.signoz.io/signoz/pkg/query-service/app/logparsingpipeline"
+	opampModel "go.signoz.io/signoz/pkg/query-service/app/opamp/model"
 	"go.signoz.io/signoz/pkg/query-service/dao"
 	am "go.signoz.io/signoz/pkg/query-service/integrations/alertManager"
 	signozio "go.signoz.io/signoz/pkg/query-service/integrations/signozio"
 	"go.signoz.io/signoz/pkg/query-service/interfaces"
 	"go.signoz.io/signoz/pkg/query-service/model"
+
 	"go.signoz.io/signoz/pkg/query-service/rules"
 	"go.signoz.io/signoz/pkg/query-service/telemetry"
 	"go.signoz.io/signoz/pkg/query-service/version"
@@ -456,6 +459,9 @@ func (aH *APIHandler) RegisterRoutes(router *mux.Router, am *AuthMiddleware) {
 	router.HandleFunc("/api/v1/getResetPasswordToken/{id}", am.AdminAccess(aH.getResetPasswordToken)).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/resetPassword", am.OpenAccess(aH.resetPassword)).Methods(http.MethodPost)
 	router.HandleFunc("/api/v1/changePassword/{id}", am.SelfAccess(aH.changePassword)).Methods(http.MethodPost)
+
+	router.HandleFunc("/api/v1/confDown", am.SelfAccess(aH.confDown)).Methods(http.MethodPost)
+
 }
 
 func Intersection(a, b []int) (c []int) {
@@ -3480,6 +3486,35 @@ func (aH *APIHandler) QueryRangeV4(w http.ResponseWriter, r *http.Request) {
 	}
 
 	aH.queryRangeV4(r.Context(), queryRangeParams, w, r)
+}
+
+func (aH *APIHandler) confDown(w http.ResponseWriter, r *http.Request) {
+
+	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	instanceId := r.Form.Get("instanceid")
+	if opampModel.AllAgents.FindAgent(instanceId) == nil {
+		RespondError(w, model.InternalError(errors.New("agent disconnected or unkown")), nil)
+		return
+	}
+
+	// i will change this param ,chenge ti opration  because new param is simple
+
+	configStr := r.PostForm.Get("config")
+	clientAgentConf.UpdateConfmap(r.Context(), configStr, instanceId)
+
+	// // Wait for up to 5 seconds for a Status update, which is expected
+	// // to be reported by the Agent after we set the remote config.
+	// timer := time.NewTicker(time.Second * 5)
+
+	// select {
+	// case <-timer.C:
+	// }
+	aH.WriteJSON(w, r, map[string]string{"data": "down finsh"})
+
 }
 
 // postProcessResult applies having clause, metric limit, reduce function to the result

@@ -121,7 +121,68 @@ func (agents *Agents) RecommendLatestConfigToAll(
 ) error {
 	for _, agent := range agents.GetAllAgents() {
 		newConfig, confId, err := provider.RecommendAgentConfig(
-			[]byte(agent.EffectiveConfig),
+			agent.ID, []byte(agent.EffectiveConfig),
+		)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf(
+				"could not generate conf recommendation for %v", agent.ID,
+			))
+		}
+
+		// Recommendation is same as current config
+		if string(newConfig) == agent.EffectiveConfig {
+			zap.L().Info(
+				"Recommended config same as current effective config for agent", zap.String("agentID", agent.ID),
+			)
+			return nil
+		}
+
+		newRemoteConfig := &protobufs.AgentRemoteConfig{
+			Config: &protobufs.AgentConfigMap{
+				ConfigMap: map[string]*protobufs.AgentConfigFile{
+					CollectorConfigFilename: {
+						Body:        newConfig,
+						ContentType: "application/x-yaml",
+					},
+				},
+			},
+			ConfigHash: []byte(confId),
+		}
+
+		agent.mux.Lock()
+		defer agent.mux.Unlock()
+		agent.remoteConfig = newRemoteConfig
+
+		agent.SendToAgent(&protobufs.ServerToAgent{
+			RemoteConfig: newRemoteConfig,
+		})
+
+		ListenToConfigUpdate(agent.ID, confId, provider.ReportConfigDeploymentStatus)
+	}
+	return nil
+}
+
+func (agents *Agents) GetAllClientAgents() []*Agent {
+	agents.mux.RLock()
+	defer agents.mux.RUnlock()
+
+	allAgents := []*Agent{}
+	for _, v := range agents.agentsById {
+		if v.IsClient {
+			allAgents = append(allAgents, v)
+		}
+	}
+	return allAgents
+}
+
+// Recommend latest config to connected agents whose effective
+// config is not the same as the latest recommendation
+func (agents *Agents) ClientRecommendLatestConfigToAll(
+	provider AgentConfigProvider,
+) error {
+	for _, agent := range agents.GetAllClientAgents() {
+		newConfig, confId, err := provider.RecommendAgentConfig(
+			agent.ID, []byte(agent.EffectiveConfig),
 		)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf(

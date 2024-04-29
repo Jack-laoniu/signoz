@@ -1,5 +1,5 @@
 # use a minimal alpine image
-FROM alpine:3.18.6
+FROM alpine:3.18.5
 
 # Add Maintainer Info
 LABEL maintainer="signoz"
@@ -14,7 +14,7 @@ RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 WORKDIR /root
 
 # copy the query-service binary
-COPY ee/query-service/bin/query-service-${TARGETOS}-${TARGETARCH} /root/query-service
+COPY pkg/query-service/bin/query-service-${TARGETOS}-${TARGETARCH} /root/query-service
 
 # copy prometheus YAML config
 COPY pkg/query-service/config/prometheus.yml /root/config/prometheus.yml

@@ -95,7 +95,7 @@ func (m *Manager) notifyConfigUpdateSubscribers() {
 }
 
 // Implements opamp.AgentConfigProvider
-func (m *Manager) RecommendAgentConfig(currentConfYaml []byte) (
+func (m *Manager) RecommendAgentConfig(agentId string, currentConfYaml []byte) (
 	recommendedConfYaml []byte,
 	// Opaque id of the recommended config, used for reporting deployment status updates
 	configId string,

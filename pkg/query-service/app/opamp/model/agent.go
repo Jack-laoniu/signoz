@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ const (
 // set in agent description when agent is capable of supporting
 // lb exporter configuration. values: 1 (true) or 0 (false)
 const lbExporterFlag = "capabilities.lbexporter"
+const serviceNameFlag = "service.name"
 
 type Agent struct {
 	ID              string      `json:"agentId" yaml:"agentId" db:"agent_id"`
@@ -34,7 +36,7 @@ type Agent struct {
 	CurrentStatus   AgentStatus `json:"currentStatus" yaml:"currentStatus" db:"current_status"`
 	remoteConfig    *protobufs.AgentRemoteConfig
 	Status          *protobufs.AgentToServer
-
+	IsClient        bool
 	// can this agent be load balancer
 	CanLB bool
 
@@ -71,6 +73,27 @@ func (agent *Agent) Upsert() error {
 	}
 
 	return nil
+}
+
+// extracts lb exporter support flag from agent description. the flag
+// is used to decide if lb exporter can be enabled on the agent.
+func ExtractServiceName(agentDescr *protobufs.AgentDescription) bool {
+	if agentDescr == nil {
+		return false
+	}
+	if len(agentDescr.IdentifyingAttributes) > 0 {
+		for _, kv := range agentDescr.IdentifyingAttributes {
+			anyvalue, ok := kv.Value.Value.(*protobufs.AnyValue_StringValue)
+			if !ok {
+				continue
+			}
+			if kv.Key == serviceNameFlag && anyvalue.StringValue == "signoz-otel-collector" {
+				// agent can support load balancer config
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // extracts lb exporter support flag from agent description. the flag
@@ -254,7 +277,7 @@ func (agent *Agent) processStatusUpdate(
 		// We need to recalculate the config.
 		configChanged = agent.updateRemoteConfig(configProvider)
 	}
-
+	fmt.Println("isconfigChanged", agent.ID, agent.remoteConfig, configChanged)
 	// If remote config is changed and different from what the Agent has then
 	// send the new remote config to the Agent.
 	if configChanged ||
@@ -274,7 +297,7 @@ func (agent *Agent) processStatusUpdate(
 }
 
 func (agent *Agent) updateRemoteConfig(configProvider AgentConfigProvider) bool {
-	recommendedConfig, confId, err := configProvider.RecommendAgentConfig([]byte(agent.EffectiveConfig))
+	recommendedConfig, confId, err := configProvider.RecommendAgentConfig(agent.ID, []byte(agent.EffectiveConfig))
 	if err != nil {
 		zap.L().Error("could not generate config recommendation for agent", zap.String("agentID", agent.ID), zap.Error(err))
 		return false
@@ -307,13 +330,14 @@ func (agent *Agent) updateRemoteConfig(configProvider AgentConfigProvider) bool 
 	}
 
 	configChanged := !isEqualRemoteConfig(agent.remoteConfig, &cfg)
-
+	fmt.Println("configChanged", agent.remoteConfig, &cfg)
 	agent.remoteConfig = &cfg
 
 	return configChanged
 }
 
 func isEqualRemoteConfig(c1, c2 *protobufs.AgentRemoteConfig) bool {
+	fmt.Println("c1c2", c1, c2)
 	if c1 == c2 {
 		return true
 	}

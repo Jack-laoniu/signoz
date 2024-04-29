@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/pkg/errors"
@@ -53,7 +54,7 @@ func GetUserFromRequest(r *http.Request) (*model.UserPayload, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	fmt.Println("fuck you")
 	user, err := validateUser(accessJwt)
 	if err != nil {
 		return nil, err

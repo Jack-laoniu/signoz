@@ -4,7 +4,7 @@ package model
 type AgentConfigProvider interface {
 	// Generate recommended config for an agent based on its `currentConfYaml`
 	// and current state of user facing settings for agent based features.
-	RecommendAgentConfig(currentConfYaml []byte) (
+	RecommendAgentConfig(agentId string, currentConfYaml []byte) (
 		recommendedConfYaml []byte,
 		// Opaque id of the recommended config, used for reporting deployment status updates
 		configId string,

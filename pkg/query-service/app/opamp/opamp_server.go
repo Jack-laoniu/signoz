@@ -19,7 +19,8 @@ type Server struct {
 	logger       *zap.Logger
 	capabilities int32
 
-	agentConfigProvider AgentConfigProvider
+	agentConfigProvider       AgentConfigProvider
+	clinetagentConfigProvider AgentConfigProvider
 
 	// cleanups to be run when stopping the server
 	cleanups []func()
@@ -30,15 +31,16 @@ const capabilities = protobufs.ServerCapabilities_ServerCapabilities_AcceptsEffe
 	protobufs.ServerCapabilities_ServerCapabilities_AcceptsStatus
 
 func InitializeServer(
-	agents *model.Agents, agentConfigProvider AgentConfigProvider,
+	agents *model.Agents, agentConfigProvider AgentConfigProvider, clientAgentConfigProvider AgentConfigProvider,
 ) *Server {
 	if agents == nil {
 		agents = &model.AllAgents
 	}
 
 	opAmpServer = &Server{
-		agents:              agents,
-		agentConfigProvider: agentConfigProvider,
+		agents:                    agents,
+		agentConfigProvider:       agentConfigProvider,
+		clinetagentConfigProvider: clientAgentConfigProvider,
 	}
 	opAmpServer.server = server.New(zap.L().Sugar())
 	return opAmpServer
@@ -54,7 +56,14 @@ func (srv *Server) Start(listener string) error {
 		},
 		ListenEndpoint: listener,
 	}
-
+	clientunsubscribe := srv.clinetagentConfigProvider.SubscribeToConfigUpdates(func() {
+		err := srv.agents.RecommendLatestConfigToAll(srv.clinetagentConfigProvider)
+		if err != nil {
+			zap.L().Error(
+				"could not roll out latest config recommendation to connected agents", zap.Error(err),
+			)
+		}
+	})
 	unsubscribe := srv.agentConfigProvider.SubscribeToConfigUpdates(func() {
 		err := srv.agents.RecommendLatestConfigToAll(srv.agentConfigProvider)
 		if err != nil {
@@ -63,7 +72,7 @@ func (srv *Server) Start(listener string) error {
 			)
 		}
 	})
-	srv.cleanups = append(srv.cleanups, unsubscribe)
+	srv.cleanups = append(srv.cleanups, unsubscribe, clientunsubscribe)
 
 	return srv.server.Start(settings)
 }
@@ -104,7 +113,13 @@ func (srv *Server) OnMessage(conn types.Connection, msg *protobufs.AgentToServer
 		Capabilities: uint64(capabilities),
 	}
 
-	agent.UpdateStatus(msg, response, srv.agentConfigProvider)
+	// 这里就需要判断下是client还是coll从而注入不同的agentConfigProvider
+	if model.ExtractServiceName(msg.AgentDescription) {
+		agent.UpdateStatus(msg, response, srv.agentConfigProvider)
+	} else {
+		agent.IsClient = true
+		agent.UpdateStatus(msg, response, srv.clinetagentConfigProvider)
+	}
 
 	return response
 }

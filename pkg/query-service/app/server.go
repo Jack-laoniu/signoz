@@ -27,6 +27,7 @@ import (
 	"go.signoz.io/signoz/pkg/query-service/app/logparsingpipeline"
 	"go.signoz.io/signoz/pkg/query-service/app/opamp"
 	opAmpModel "go.signoz.io/signoz/pkg/query-service/app/opamp/model"
+	"go.signoz.io/signoz/pkg/query-service/clientAgentConf"
 	v3 "go.signoz.io/signoz/pkg/query-service/model/v3"
 
 	"go.signoz.io/signoz/pkg/query-service/app/explorer"
@@ -227,12 +228,16 @@ func NewServer(serverOptions *ServerOptions) (*Server, error) {
 			logParsingPipelineController,
 		},
 	})
+	clientagentConfMgr, err := clientAgentConf.Initiate(&clientAgentConf.ManagerOptions{
+		DB:       localDB,
+		DBEngine: "sqlite",
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	s.opampServer = opamp.InitializeServer(
-		&opAmpModel.AllAgents, agentConfMgr,
+		&opAmpModel.AllAgents, agentConfMgr, clientagentConfMgr,
 	)
 
 	return s, nil
